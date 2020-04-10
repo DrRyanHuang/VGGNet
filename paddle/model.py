@@ -10,6 +10,7 @@ class LinConPoo(Layer):
         '''
         @Brief
             可用于自定义常用网络结构，将自定义的网络结构列表传入，返回Layer模型
+            实际上该类是用于`Conv2D`, `Pool2D`, `Linear`的排列组合
 
         @Parameters
             sequence_list : 自定义网络结构列表, 列表每一元素为字典或列表, 指定每一层的参数
@@ -19,7 +20,7 @@ class LinConPoo(Layer):
 
         @Examples
         ------------
-        >>> # 搭建VGGNet:
+        >>> # 可以直接用来搭建VGGNet:
 
         >>> VGG_list_part1 = [
 
@@ -76,6 +77,8 @@ class LinConPoo(Layer):
                 x = fluid.layers.flatten(x)
                 x = VGG_part2(x, True)
                 print(x.numpy().shape)
+
+        >>> # 以上是手动搭建VGG16, 也可以直接调用VGG16类, 该类在`LinConPoo`类上进行封装
         '''
         super(LinConPoo, self).__init__()
         sequence_list = sequence_list.copy()
