@@ -80,6 +80,7 @@ class LinConPoo(Layer):
 
         >>> # 以上是手动搭建VGG16, 也可以直接调用VGG16类, 该类在`LinConPoo`类上进行封装
         '''
+
         super(LinConPoo, self).__init__()
         sequence_list = sequence_list.copy()
 
@@ -150,3 +151,104 @@ class LinConPoo(Layer):
             return x
 
         return self._layers_squence(inputs)
+
+
+class VGG(fluid.dygraph.Layer):
+
+    def __init__(self, input_channels=3, out_dim=2, VGG_part_list1=None, VGG_part_list2=None):
+        '''
+        @Brief
+            用于创建VGG模型网络
+
+        @Parameters
+            input_channels : VGG网络的输入通道数, 默认为3
+            out_dim        : VGG网络的输出维数, 默认为2, 即默认做二分类问题
+            VGG_part1      : 自定义网络结构列表, 列表每一元素为字典或列表, 指定每一层的参数, 该部分为`flatten`之前的部分
+            VGG_part2      : 与 `VGG_part1` 相同, 该部分为`flatten`之后的部分
+
+        @Return
+            默认情况下，返回标准VGG16网络, 最后的全连接层输出维度为2, 即默认做二分类问题
+
+        @Examples
+        ------------
+        >>> # 创建VGG16模型对象, 做二分类问题
+        >>> vgg = VGG()
+
+        >>> import numpy as np
+        >>> data = np.ones(shape=(8, 3, 224, 224), dtype=np.float32) # 喂入VGG16的数据要求被resize为(224, 244)
+        >>> with fluid.dygraph.guard():
+
+                data = paddle.fluid.dygraph.to_variable(data) # 转化为paddle的数据
+                y = vgg(data)
+                print(y.numpy().shape)
+
+        ----------------------------------------
+
+        >>> # 如果我们觉得 `VGG_list_part2`太大了, 同时我们要做5分类, 我们可以更改网络结构, 同时将最后一层的`output_dim`设置为5:
+        >>> VGG_list_part2 = [
+
+            {'type':Linear, 'input_dim': 512*7*7, 'output_dim':4096, 'act':'relu', 'bias_attr':True},
+            {'type':Linear, 'input_dim':4096,     'output_dim':5,    'act':'relu', 'bias_attr':True},
+        ]
+        >>> vgg = VGG(VGG_list_part2=VGG_list_part2) # 直接将 `VGG_list_part2` 传入即可
+        '''
+        super(VGG, self).__init__()
+
+        # 以下 `VGG_list_part1`和`VGG_list_part2`是VGG16二分类的默认结构
+
+        if VGG_part_list1 is None:
+
+            VGG_part_list1 = [
+
+                {'type':Conv2D, 'num_channels': input_channels, 'num_filters':64, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+                {'type':Conv2D, 'num_channels':64, 'num_filters':64, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+
+                {'type':Pool2D, 'pool_size':2,     'pool_type':'max',    'pool_stride':2,         'global_pooling':False},
+
+                {'type':Conv2D, 'num_channels':64,  'num_filters':128, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+                {'type':Conv2D, 'num_channels':128, 'num_filters':128, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+
+                {'type':Pool2D, 'pool_size':2,     'pool_type':'max',    'pool_stride':2,         'global_pooling':False},
+
+                {'type':Conv2D, 'num_channels':128, 'num_filters':256, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+                {'type':Conv2D, 'num_channels':256, 'num_filters':256, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+                {'type':Conv2D, 'num_channels':256, 'num_filters':256, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+
+                {'type':Pool2D, 'pool_size':2,     'pool_type':'max',    'pool_stride':2,         'global_pooling':False},
+
+                {'type':Conv2D, 'num_channels':256, 'num_filters':512, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+                {'type':Conv2D, 'num_channels':512, 'num_filters':512, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+                {'type':Conv2D, 'num_channels':512, 'num_filters':512, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+
+                {'type':Pool2D, 'pool_size':2,     'pool_type':'max',    'pool_stride':2,         'global_pooling':False},
+
+                {'type':Conv2D, 'num_channels':512, 'num_filters':512, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+                {'type':Conv2D, 'num_channels':512, 'num_filters':512, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+                {'type':Conv2D, 'num_channels':512, 'num_filters':512, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+
+                {'type':Pool2D, 'pool_size':2,     'pool_type':'max',    'pool_stride':2,         'global_pooling':False},
+
+            ]
+
+        if VGG_part_list2 is None:
+
+            VGG_part_list2 = [
+
+                {'type':Linear, 'input_dim': 512*7*7, 'output_dim':4096,      'act':'relu', 'bias_attr':True},
+                {'type':Linear, 'input_dim': 4096,    'output_dim':4096,      'act':'relu', 'bias_attr':True},
+                {'type':Linear, 'input_dim': 4096,    'output_dim':out_dim,   'act':'relu', 'bias_attr':True},
+            ]
+
+        self.VGG_part1 = LinConPoo(VGG_part_list1)
+        self.VGG_part2 = LinConPoo(VGG_part_list2)
+
+
+    def forward(self, inputs):
+
+    	# VGG的第一部分, `flatten`的前半部分
+        VGG_part1 = self.VGG_part1(inputs)
+        x = fluid.layers.flatten(VGG_part1)
+        # VGG的第二部分, `flatten`的后半部分
+        VGG_part2 = self.VGG_part2(x)
+
+        return VGG_part2
