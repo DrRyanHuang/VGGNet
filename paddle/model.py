@@ -152,19 +152,19 @@ class LinConPoo(Layer):
 
         return self._layers_squence(inputs)
 
-
 class VGG(fluid.dygraph.Layer):
 
-    def __init__(self, input_channels=3, out_dim=2, VGG_part_list1=None, VGG_part_list2=None):
+
+    def __init__(self, input_channel_num=3, out_dim=2, VGG_part_list1=None, VGG_part_list2=None):
         '''
         @Brief
             用于创建VGG模型网络
 
         @Parameters
-            input_channels : VGG网络的输入通道数, 默认为3
-            out_dim        : VGG网络的输出维数, 默认为2, 即默认做二分类问题
-            VGG_part1      : 自定义网络结构列表, 列表每一元素为字典或列表, 指定每一层的参数, 该部分为`flatten`之前的部分
-            VGG_part2      : 与 `VGG_part1` 相同, 该部分为`flatten`之后的部分
+            input_channel_num : VGG网络的输入通道数, 默认为3
+            out_dim           : VGG网络的输出维数, 默认为2, 即默认做二分类问题
+            VGG_part1         : 自定义网络结构列表, 列表每一元素为字典或列表, 指定每一层的参数, 该部分为`flatten`之前的部分
+            VGG_part2         : 与 `VGG_part1` 相同, 该部分为`flatten`之后的部分
 
         @Return
             默认情况下，返回标准VGG16网络, 最后的全连接层输出维度为2, 即默认做二分类问题
@@ -192,15 +192,19 @@ class VGG(fluid.dygraph.Layer):
         ]
         >>> vgg = VGG(VGG_list_part2=VGG_list_part2) # 直接将 `VGG_list_part2` 传入即可
         '''
+
+        self.VGG_part_list1 = VGG_part_list1.copy()
+        self.VGG_part_list2 = VGG_part_list2.copy()
+
         super(VGG, self).__init__()
 
         # 以下 `VGG_list_part1`和`VGG_list_part2`是VGG16二分类的默认结构
+        if self.VGG_part_list1 is None:
 
-        if VGG_part_list1 is None:
 
-            VGG_part_list1 = [
+            self.VGG_part_list1 = [
 
-                {'type':Conv2D, 'num_channels': input_channels, 'num_filters':64, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+                {'type':Conv2D, 'num_channels': input_channel_num, 'num_filters':64, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
                 {'type':Conv2D, 'num_channels':64, 'num_filters':64, 'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
 
                 {'type':Pool2D, 'pool_size':2,     'pool_type':'max',    'pool_stride':2,         'global_pooling':False},
@@ -230,17 +234,17 @@ class VGG(fluid.dygraph.Layer):
 
             ]
 
-        if VGG_part_list2 is None:
+        if self.VGG_part_list2 is None:
 
-            VGG_part_list2 = [
+            self.VGG_part_list2 = [
 
                 {'type':Linear, 'input_dim': 512*7*7, 'output_dim':4096,      'act':'relu', 'bias_attr':True},
                 {'type':Linear, 'input_dim': 4096,    'output_dim':4096,      'act':'relu', 'bias_attr':True},
                 {'type':Linear, 'input_dim': 4096,    'output_dim':out_dim,   'act':'relu', 'bias_attr':True},
             ]
 
-        self.VGG_part1 = LinConPoo(VGG_part_list1)
-        self.VGG_part2 = LinConPoo(VGG_part_list2)
+        self.VGG_part1 = LinConPoo(self.VGG_part_list1)
+        self.VGG_part2 = LinConPoo(self.VGG_part_list2)
 
 
     def forward(self, inputs):
