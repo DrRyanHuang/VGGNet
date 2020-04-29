@@ -3,6 +3,7 @@ from paddle.fluid.layers import flatten
 
 import paddle.fluid as fluid
 import numpy as np
+import copy
 
 class LinConPoo(Layer):
 
@@ -82,17 +83,20 @@ class LinConPoo(Layer):
         '''
 
         super(LinConPoo, self).__init__()
-        sequence_list = sequence_list.copy()
+        self.__sequence_list = copy.deepcopy(sequence_list)
 
         # 参数有效检验
-        if not isinstance(sequence_list, list): raise ValueError('参数`sequence_list`必须为列表')
+        if not isinstance(self.__sequence_list, list): raise ValueError('参数`sequence_list`必须为列表')
 
         # 每一层模型序列
         self._layers_squence = Sequential()
         self._layers_list = []
 
         LAYLIST = [Conv2D, Linear, Pool2D]
-        for i, layer_arg in enumerate(sequence_list):
+        for i, layer_arg in enumerate(self.__sequence_list):
+
+            # 不改变原来字典或者列表的值
+            # layer_arg = layer_arg.copy()
 
             # 每一层传入的有可能是列表，也有可能是字典
             if isinstance(layer_arg, dict):
@@ -152,6 +156,7 @@ class LinConPoo(Layer):
 
         return self._layers_squence(inputs)
 
+
 class VGG(fluid.dygraph.Layer):
 
 
@@ -193,13 +198,11 @@ class VGG(fluid.dygraph.Layer):
         >>> vgg = VGG(VGG_list_part2=VGG_list_part2) # 直接将 `VGG_list_part2` 传入即可
         '''
 
-        self.VGG_part_list1 = VGG_part_list1.copy()
-        self.VGG_part_list2 = VGG_part_list2.copy()
 
         super(VGG, self).__init__()
 
         # 以下 `VGG_list_part1`和`VGG_list_part2`是VGG16二分类的默认结构
-        if self.VGG_part_list1 is None:
+        if VGG_part_list1 is None:
 
 
             self.VGG_part_list1 = [
@@ -233,8 +236,11 @@ class VGG(fluid.dygraph.Layer):
                 {'type':Pool2D, 'pool_size':2,     'pool_type':'max',    'pool_stride':2,         'global_pooling':False},
 
             ]
+        else:
+            self.VGG_part_list1 = copy.deepcopy(VGG_part_list1)
 
-        if self.VGG_part_list2 is None:
+
+        if VGG_part_list2 is None:
 
             self.VGG_part_list2 = [
 
@@ -242,9 +248,13 @@ class VGG(fluid.dygraph.Layer):
                 {'type':Linear, 'input_dim': 4096,    'output_dim':4096,      'act':'relu', 'bias_attr':True},
                 {'type':Linear, 'input_dim': 4096,    'output_dim':out_dim,   'act':'relu', 'bias_attr':True},
             ]
+        else:
+            self.VGG_part_list2 = copy.deepcopy(VGG_part_list2)
+
 
         self.VGG_part1 = LinConPoo(self.VGG_part_list1)
         self.VGG_part2 = LinConPoo(self.VGG_part_list2)
+
 
 
     def forward(self, inputs):
