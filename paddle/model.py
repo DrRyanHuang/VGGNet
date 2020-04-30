@@ -266,3 +266,196 @@ class VGG(fluid.dygraph.Layer):
         VGG_part2 = self.VGG_part2(x)
 
         return VGG_part2
+
+class Inception_v1(fluid.dygraph.Layer):
+
+    def __init__(self, num_channels, ch1x1, ch3x3reduced, ch3x3, ch5x5reduced, ch5x5, pool_proj):
+        '''
+        @Brief
+            传入参数用于定义 `Inception_v1` 结构
+
+        @Parameters
+            num_channels : 传入图片通道数
+            ch1x1        : 1x1卷积操作的输出通道数
+            ch3x3reduced : 3x3卷积之前的1x1卷积的通道数
+            ch3x3        : 3x3卷积操作的输出通道数
+            ch5x5reduced : 5x5卷积之前的1x1卷积的通道数
+            ch5x5        : 5x5卷积操作的输出通道数
+            pool_proj    : 池化操作之后1x1卷积的通道数
+
+        @Return
+            返回 `Inception_v1` 网络模型
+
+        @Examples
+        ------------
+        '''
+
+        super(Inception_v1, self).__init__()
+
+        self.branch1 = Conv2D(num_channels=num_channels,
+                              num_filters=ch1x1,
+                              filter_size=1,
+                              stride=1,
+                              act='relu',
+                              padding=0)
+
+
+        branch2_list = [
+                {'type':Conv2D, 'num_channels': num_channels, 'num_filters':ch3x3reduced, 'filter_size':1, 'stride':1, 'padding':0, 'act':'relu', 'bias_attr':True},
+                {'type':Conv2D, 'num_channels':ch3x3reduced,  'num_filters':ch3x3,        'filter_size':3, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+        ]
+        self.branch2 = LinConPoo(branch2_list)
+
+        branch3_list = [
+                {'type':Conv2D, 'num_channels': num_channels, 'num_filters':ch5x5reduced, 'filter_size':1, 'stride':1, 'padding':0, 'act':'relu', 'bias_attr':True},
+                {'type':Conv2D, 'num_channels':ch5x5reduced,  'num_filters':ch5x5,        'filter_size':5, 'stride':1, 'padding':2, 'act':'relu', 'bias_attr':True},
+        ]
+        self.branch3 = LinConPoo(branch3_list)
+
+        branch4_list = [
+                {'type':Pool2D,  'pool_size':3,  'pool_type':'max',  'pool_stride':1,  'pool_padding':2,  'global_pooling':False},
+                {'type':Conv2D,  'num_channels':num_channels, 'num_filters':pool_proj, 'filter_size':5, 'stride':1, 'padding':1, 'act':'relu', 'bias_attr':True},
+        ]
+        self.branch4 = LinConPoo(branch4_list)
+
+
+
+    def forward(self, inputs):
+        '''
+        @Parameters :
+            inputs     :   原始数据
+        '''
+
+        branch1 = self.branch1(inputs)
+        branch2 = self.branch2(inputs)
+        branch3 = self.branch3(inputs)
+        branch4 = self.branch4(inputs)
+
+        outputs = concat([branch1, branch2, branch3, branch4], axis=1)
+
+        return outputs
+
+
+class GoogLeNet(fluid.dygraph.Layer):
+
+    def __init__(self, num_channels=3, out_dim=2):
+        '''
+        @Brief:
+            使用 `Inception_v1` 结构搭建的 `GoogLeNet` 模型
+            注: 喂入的图片最好是 224 * 224
+        @Parameters:
+            num_channels : 输入的图片通道数
+            out_dim      : 输出的维度(几分类就是几)
+        @Return:
+            out          : 主输出(shape=(X, out_dim))
+            out1         : 辅助分类器_1的输出(shape=(X, out_dim))
+            out2         : 辅助分类器_2的输出(shape=(X, out_dim))
+        @Examples:
+        ------------
+        >>> import numpy as np
+        >>> data = np.ones(shape=(8, 3, 224, 224), dtype=np.float32) # 假设为8张三通道的照片
+        >>> with fluid.dygraph.guard():
+                googlenet = GoogLeNet(out_dim=10)
+                data = fluid.dygraph.to_variable(data)
+                y, _, _ = googlenet(data)
+                print(y.numpy().shape)
+        (8, 10)
+        '''
+
+        super(GoogLeNet, self).__init__()
+
+        part1_list  = [
+            {'type':Conv2D, 'num_channels':num_channels, 'num_filters':64, 'filter_size':7, 'stride':2, 'padding':3, 'act':None, 'bias_attr':False},
+            {'type':Pool2D, 'pool_size':3, 'pool_type':'max', 'pool_stride':2, 'pool_padding':0, 'global_pooling':False},
+        ]
+
+        part2_list  = [
+            {'type':Conv2D, 'num_channels':64, 'num_filters':64 , 'filter_size':1, 'stride':1, 'padding':0, 'act':None, 'bias_attr':False},
+            {'type':Conv2D, 'num_channels':64, 'num_filters':192, 'filter_size':3, 'stride':1, 'padding':1, 'act':None, 'bias_attr':False},
+        ]
+
+
+
+        self.googLeNet_part1 = Sequential(
+                                ('part1', LinConPoo(part1_list)),
+                                ('BN1', BatchNorm(64)),
+                                ('part2', LinConPoo(part2_list)),
+                                ('BN2', BatchNorm(192)),
+                                ('MaxPool1', Pool2D(pool_size=3, pool_type='max', pool_stride=2)),
+                                ('inception_3a', Inception_v1(192,  64,  96, 128, 16, 32, 32)),
+                                ('inception_3b', Inception_v1(256, 128, 128, 192, 32, 96, 64)),
+                                ('MaxPool2', Pool2D(pool_size=3, pool_type='max', pool_stride=2)),
+                                ('inception_4a', Inception_v1(480, 192, 96, 208, 16, 48, 64)),
+                            )
+
+        # `self.googLeNet_part1` 完成了 `inception_4a` 之前的部分, 此处需要辅助分类器
+        self.auxiliary_classifier1_1 = LinConPoo([
+            {'type':Pool2D, 'pool_size':5, 'pool_type':'avg', 'pool_stride':3, 'pool_padding':0, 'global_pooling':False},
+            {'type':Conv2D, 'num_channels':512, 'num_filters':128, 'filter_size':1, 'stride':1, 'padding':0, 'act':None, 'bias_attr':False},
+        ])
+        self.auxiliary_classifier1_fc1 = Linear(input_dim=128*3*3, output_dim=1024, act='relu', bias_attr=True)
+        self.auxiliary_classifier1_fc2 = Linear(input_dim=1024, output_dim=out_dim, act='softmax', bias_attr=True)
+
+
+
+        # 此处开始定义辅助分类器之后的部分
+        self.googLeNet_part2 = Sequential(
+                                # ('googLeNet_part1', self.googLeNet_part1),
+                                ('inception_4b', Inception_v1(512, 160, 112, 224, 24, 64, 64)),
+                                ('inception_4c', Inception_v1(512, 128, 128, 256, 24, 64, 64)),
+                                ('inception_4d', Inception_v1(512, 112, 144, 288, 32, 64, 64)),
+                            )
+
+        # `self.googLeNet_part2`完成了 `inception_4e` 之前的部分, 此处需要辅助分类器
+        self.auxiliary_classifier2_1 = LinConPoo([
+            {'type':Pool2D, 'pool_size':5, 'pool_type':'avg', 'pool_stride':3, 'pool_padding':0, 'global_pooling':False},
+            {'type':Conv2D, 'num_channels':512, 'num_filters':128, 'filter_size':1, 'stride':1, 'padding':0, 'act':None, 'bias_attr':False},
+        ])
+        self.auxiliary_classifier2_fc1 = Linear(input_dim=128*3*3, output_dim=1024, act='relu', bias_attr=True)
+        self.auxiliary_classifier2_fc2 = Linear(input_dim=1024, output_dim=out_dim, act='softmax', bias_attr=True)
+
+
+
+        # 此处开始定义辅助分类器之后的部分
+        self.googLeNet_part3 = Sequential(
+                                # ('googLeNet_part2', self.googLeNet_part2),
+                                ('inception_4e', Inception_v1(528, 256, 160, 320, 32, 128, 128)),
+                                ('MaxPool3', Pool2D(pool_size=3, pool_type='max', pool_stride=2)),
+                                ('inception_5a', Inception_v1(832, 256, 160, 320, 32, 128, 128)),
+                                ('inception_5b', Inception_v1(832, 384, 192, 384, 48, 128, 128)),
+                                ('AvgPool1', Pool2D(pool_size=6, pool_type='max', pool_stride=1)),
+                            )
+        # 由于 `Sequential` 中不能添加 dropout 层, 所以此处仍然要分割
+        self.last_fc = Linear(1024, out_dim, act='softmax', bias_attr=True)
+
+
+    def forward(self, inputs):
+
+        # 没有辅助分类器之前的部分
+        googLeNet_part1 = self.googLeNet_part1(inputs)
+        # ------------------- 由辅助分类器来分隔 -------------------
+        googLeNet_part2 = self.googLeNet_part2(googLeNet_part1)
+        # ------------------- 由辅助分类器来分隔 -------------------
+        googLeNet_part3 = self.googLeNet_part3(googLeNet_part2)
+        # 将输出拉直
+        out = fluid.layers.flatten(googLeNet_part3, axis=1)
+        out = fluid.layers.dropout(x=out, dropout_prob=0.7)
+        out = self.last_fc(out)
+
+
+        # 第一个辅助分类器
+        out1 = self.auxiliary_classifier1_1(googLeNet_part1)
+        out1 = fluid.layers.flatten(out1, axis=1)
+        out1 = self.auxiliary_classifier1_fc1(out1)
+        out1 = fluid.layers.dropout(x=out1, dropout_prob=0.7)
+        out1 = self.auxiliary_classifier1_fc2(out1)
+
+
+        # 第二个辅助分类器
+        out2 = self.auxiliary_classifier2_1(googLeNet_part1)
+        out2 = fluid.layers.flatten(out2, axis=1)
+        out2 = self.auxiliary_classifier2_fc1(out2)
+        out2 = fluid.layers.dropout(x=out2, dropout_prob=0.7)
+        out2 = self.auxiliary_classifier2_fc2(out2)
+
+        return out, out1, out2
